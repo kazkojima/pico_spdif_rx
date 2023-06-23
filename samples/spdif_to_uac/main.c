@@ -38,7 +38,7 @@ void spdif_rx_read(s24_t *samples, size_t sample_count)
 
   uint32_t fifo_count = spdif_rx_get_fifo_count();
   if (spdif_rx_get_state() == SPDIF_RX_STATE_STABLE) {
-    if (mute_flag && fifo_count / 2 >= sample_count) {
+    if (mute_flag && fifo_count >= sample_count) {
       mute_flag = false;
     }
   } else {
@@ -48,18 +48,20 @@ void spdif_rx_read(s24_t *samples, size_t sample_count)
   //printf("mute %d fifo %ld sc %d\n", mute_flag, fifo_count, sample_count);
 
   if (mute_flag) {
-    for (int i = 0; i < sample_count; i++) {
-      set_s24(&samples[i], DAC_ZERO);
+    for (int i = 0; i < sample_count / 2; i++) {
+      set_s24(&samples[2*i+0], DAC_ZERO);
+      set_s24(&samples[2*i+1], DAC_ZERO);
     }
   } else {
-    uint32_t total_count = sample_count * 2;
+    uint32_t total_count = sample_count;
     int i = 0;
     uint32_t read_count = 0;
     uint32_t* buff;
     while (read_count < total_count) {
       uint32_t get_count = spdif_rx_read_fifo(&buff, total_count - read_count);
       for (int j = 0; j < get_count / 2; j++) {
-	set_s24(&samples[i], (int32_t) ((buff[j*2+0] & 0x0ffffff0) << 4));
+	set_s24(&samples[2*i+0], (int32_t) ((buff[j*2+0] & 0x0ffffff0) << 4));
+	set_s24(&samples[2*i+1], (int32_t) ((buff[j*2+1] & 0x0ffffff0) << 4));
 	i++;
       }
       read_count += get_count;
