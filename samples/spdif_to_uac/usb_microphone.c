@@ -39,17 +39,17 @@ audio_control_range_4_n_t(1) sampleFreqRng; 						// Sample frequency range stat
 static usb_microphone_tx_ready_handler_t usb_microphone_tx_ready_handler = NULL;
 
 /*------------- MAIN -------------*/
-void usb_microphone_init()
+void usb_microphone_init(uint32_t sample_rate)
 {
   tusb_init();
 
   // Init values
-  sampFreq = SAMPLE_RATE;
+  sampFreq = sample_rate;
   clkValid = 1;
 
   sampleFreqRng.wNumSubRanges = 1;
-  sampleFreqRng.subrange[0].bMin = SAMPLE_RATE;
-  sampleFreqRng.subrange[0].bMax = SAMPLE_RATE;
+  sampleFreqRng.subrange[0].bMin = sample_rate;
+  sampleFreqRng.subrange[0].bMax = sample_rate;
   sampleFreqRng.subrange[0].bRes = 0;
 }
 

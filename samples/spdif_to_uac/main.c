@@ -21,16 +21,15 @@ volatile static bool uac_setup_flg = false;
 volatile static bool uac_cancel_flg = false;
 typedef struct { uint8_t b[3]; } s24_t;
 s24_t sample_buffer[SAMPLE_BUFFER_SIZE];
+int n_samples = 48*2; // Dummy
+uint32_t sample_rate;
 
-inline void set_s24(s24_t *s, int32_t x)
+inline void set_s24(s24_t *s, uint32_t x)
 {
-  s->b[0] = x >> 8;
-  s->b[1] = x >> 16;
-  s->b[2] = x >> 24;
+  s->b[0] = x >> 0;
+  s->b[1] = x >> 8;
+  s->b[2] = x >> 16;
 }
-
-inline int32_t get_s24(s24_t s)
-{ return (int32_t)(((s.b[2] << 16) + (s.b[1] << 8) + s.b[0]) << 8); }
 
 void spdif_rx_read(s24_t *samples, size_t sample_count)
 {
@@ -60,8 +59,8 @@ void spdif_rx_read(s24_t *samples, size_t sample_count)
     while (read_count < total_count) {
       uint32_t get_count = spdif_rx_read_fifo(&buff, total_count - read_count);
       for (int j = 0; j < get_count / 2; j++) {
-	set_s24(&samples[2*i+0], (int32_t) ((buff[j*2+0] & 0x0ffffff0) << 4));
-	set_s24(&samples[2*i+1], (int32_t) ((buff[j*2+1] & 0x0ffffff0) << 4));
+	set_s24(&samples[2*i+0], ((buff[j*2+0] & 0x0ffffff0) >> 4));
+	set_s24(&samples[2*i+1], ((buff[j*2+1] & 0x0ffffff0) >> 4));
 	i++;
       }
       read_count += get_count;
@@ -97,6 +96,8 @@ void on_stable_func(spdif_rx_samp_freq_t samp_freq)
   // callback function should be returned as quick as possible
   uac_setup_flg = true;
   uac_cancel_flg = false;
+  n_samples = (samp_freq/1000) * CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_TX;
+  sample_rate = samp_freq;
 }
 
 void on_lost_stable_func()
@@ -111,18 +112,14 @@ void on_usb_microphone_tx_ready()
   // to be transmitted.
   //
   // Read new samples into local buffer.
-  spdif_rx_read(sample_buffer, SAMPLE_BUFFER_SIZE);
+  spdif_rx_read(sample_buffer, n_samples);
   // Write local buffer to the USB microphone
-  usb_microphone_write(sample_buffer, sizeof(sample_buffer));
+  usb_microphone_write(sample_buffer, n_samples * CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_TX);
 }
 
 int main()
 {
   stdio_init_all();
-
-  // initialize the USB microphone interface
-  usb_microphone_init();
-  usb_microphone_set_tx_ready_handler(on_usb_microphone_tx_ready);
 
   //measure_freqs();
 
@@ -135,11 +132,17 @@ int main()
     .flags = SPDIF_RX_FLAGS_ALL
   };
 
-#if 1
   spdif_rx_start(&config);
   spdif_rx_set_callback_on_stable(on_stable_func);
   spdif_rx_set_callback_on_lost_stable(on_lost_stable_func);
-#endif
+
+  while (!uac_setup_flg) {
+    sleep_ms(10);
+  }
+
+  // initialize the USB microphone interface
+  usb_microphone_init(sample_rate);
+  usb_microphone_set_tx_ready_handler(on_usb_microphone_tx_ready);
 
   while (true) {
     usb_microphone_task();
