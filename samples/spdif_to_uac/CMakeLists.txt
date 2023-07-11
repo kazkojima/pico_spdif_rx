@@ -24,7 +24,7 @@ add_executable(${PROJECT_NAME}
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib spdif_rx tinyusb_device tinyusb_board)
+target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib pico_rand spdif_rx tinyusb_device tinyusb_board)
 
 # set project resource assignment for PIO and DMA_IRQ to avoid confliction
 add_compile_definitions(PICO_SPDIF_RX_PIO=0)

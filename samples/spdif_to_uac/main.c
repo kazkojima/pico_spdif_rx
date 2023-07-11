@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "pico/rand.h"
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 
@@ -23,6 +24,11 @@ typedef struct { uint8_t b[3]; } s24_t;
 s24_t sample_buffer[SAMPLE_BUFFER_SIZE];
 int n_samples = 48*2; // Dummy
 uint32_t sample_rate;
+static bool decimate_flg = false;
+const uint16_t DECIMATE_RATE = 1000; // prob 0.001
+const int SOFT_START_COUNT = 8*1000; // 8s
+
+//const uint LED_PIN = PICO_DEFAULT_LED_PIN;
 
 inline void set_s24(s24_t *s, uint32_t x)
 {
@@ -34,11 +40,13 @@ inline void set_s24(s24_t *s, uint32_t x)
 void spdif_rx_read(s24_t *samples, size_t sample_count)
 {
   static bool mute_flag = true;
+  static int soft_start;
 
   uint32_t fifo_count = spdif_rx_get_fifo_count();
   if (spdif_rx_get_state() == SPDIF_RX_STATE_STABLE) {
     if (mute_flag && fifo_count >= sample_count) {
       mute_flag = false;
+      soft_start = SOFT_START_COUNT;
     }
   } else {
     mute_flag = true;
@@ -46,12 +54,33 @@ void spdif_rx_read(s24_t *samples, size_t sample_count)
 
   //printf("mute %d fifo %ld sc %d\n", mute_flag, fifo_count, sample_count);
 
-  if (mute_flag) {
+  if (mute_flag || soft_start > 0) {
     for (int i = 0; i < sample_count / 2; i++) {
       set_s24(&samples[2*i+0], DAC_ZERO);
       set_s24(&samples[2*i+1], DAC_ZERO);
     }
+    if (soft_start > 0) {
+      soft_start--;
+      // to avoid fifo overflow
+      uint32_t* trash;
+      spdif_rx_read_fifo(&trash, fifo_count);
+    }
   } else {
+    // When the input rate > USB rate, S/PDIF fifo might overflow.
+    // As a last resort, data is decimated at a certain rate. Using
+    // random to spread noise spectrum with this decimation.
+    if (fifo_count <= SPDIF_RX_FIFO_SIZE / 2) {
+      //gpio_put(LED_PIN, 0);
+      decimate_flg = false;
+    } else if (fifo_count >= 3 * SPDIF_RX_FIFO_SIZE / 4) {
+      //gpio_put(LED_PIN, 1);
+      decimate_flg = true;
+    }
+    if (decimate_flg && (uint16_t)get_rand_32() < 0xffff/DECIMATE_RATE) {
+      uint32_t* trash;
+      spdif_rx_read_fifo(&trash, CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_TX);
+    }
+
     uint32_t total_count = sample_count;
     int i = 0;
     uint32_t read_count = 0;
@@ -120,6 +149,10 @@ void on_usb_microphone_tx_ready()
 int main()
 {
   stdio_init_all();
+
+  //gpio_init(LED_PIN);
+  //gpio_set_dir(LED_PIN, GPIO_OUT);
+  //gpio_put(LED_PIN, 0);
 
   //measure_freqs();
 
